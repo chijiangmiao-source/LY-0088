@@ -55,10 +55,10 @@ class VoiceActorPage(QWidget):
         projects_layout.addWidget(projects_title)
         
         self.table = TableWidget()
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels([
-            "ID", "项目编号", "项目名称", "客户名称", "初稿日期", 
-            "返稿状态", "最终结果", "返稿次数"
+            "ID", "项目编号", "项目名称", "客户名称", "初稿日期",
+            "风险等级", "返稿状态", "最终结果", "返稿次数"
         ])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -136,9 +136,9 @@ class VoiceActorPage(QWidget):
         selected_actor = self.actor_combo.currentText()
         
         if selected_actor == "全部":
-            projects = database.get_all_projects()
+            projects = database.get_projects_with_risk()
         else:
-            projects = database.get_all_projects(actor_filter=selected_actor)
+            projects = database.get_projects_with_risk(actor_filter=selected_actor)
         
         self.load_summary(selected_actor, projects)
         self.load_projects_table(projects)
@@ -198,13 +198,34 @@ class VoiceActorPage(QWidget):
             self.table.setItem(row, 3, QTableWidgetItem(project['client_name']))
             self.table.setItem(row, 4, QTableWidgetItem(project['draft_date'] or '-'))
             
+            risk_level = project.get('risk_level', '低风险')
+            risk_color = QColor(project.get('risk_color', '#2ECC71'))
+            risk_item = QTableWidgetItem(risk_level)
+            risk_item.setForeground(risk_color)
+            risk_font = risk_item.font()
+            risk_font.setBold(True)
+            risk_item.setFont(risk_font)
+            risk_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 5, risk_item)
+            
             status_item = QTableWidgetItem(project['revision_status'])
             color = status_colors.get(project['revision_status'], QColor(100, 100, 100))
             status_item.setForeground(color)
-            self.table.setItem(row, 5, status_item)
+            self.table.setItem(row, 6, status_item)
             
-            self.table.setItem(row, 6, QTableWidgetItem(project['final_result'] or '-'))
-            self.table.setItem(row, 7, QTableWidgetItem(str(project['revision_count'])))
+            self.table.setItem(row, 7, QTableWidgetItem(project['final_result'] or '-'))
+            self.table.setItem(row, 8, QTableWidgetItem(str(project['revision_count'])))
+            
+            if risk_level == '高风险':
+                for col in range(self.table.columnCount()):
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setBackground(QColor(255, 240, 240))
+            elif risk_level == '中风险':
+                for col in range(self.table.columnCount()):
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setBackground(QColor(255, 250, 235))
     
     def get_selected_project_id(self):
         current_row = self.table.currentRow()

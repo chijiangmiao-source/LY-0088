@@ -41,6 +41,21 @@ class ProjectDetailDialog(QDialog):
         
         layout.addWidget(info_card)
         
+        self.risk_card = CardWidget(self)
+        self.risk_layout = QVBoxLayout(self.risk_card)
+        self.risk_layout.setSpacing(10)
+        self.risk_layout.setContentsMargins(20, 15, 20, 15)
+        
+        self.risk_title_label = QLabel()
+        self.risk_title_label.setStyleSheet("font-size: 16px; font-weight: bold; background-color: transparent;")
+        self.risk_layout.addWidget(self.risk_title_label)
+        
+        self.risk_factors_label = QLabel()
+        self.risk_factors_label.setStyleSheet("font-size: 13px; line-height: 1.8; color: #555; background-color: transparent;")
+        self.risk_layout.addWidget(self.risk_factors_label)
+        
+        layout.addWidget(self.risk_card)
+        
         section_label = SubtitleLabel("返稿记录")
         section_label.setStyleSheet("background-color: transparent;")
         layout.addWidget(section_label)
@@ -112,6 +127,11 @@ class ProjectDetailDialog(QDialog):
     def load_project_info(self):
         project = database.get_project_by_id(self.project_id)
         if project:
+            revisions = database.get_revisions_by_project(self.project_id)
+            project['revision_count'] = len(revisions)
+            project['max_round'] = max((r['round'] for r in revisions), default=0)
+            project['has_urgent'] = 1 if any(r['is_urgent'] for r in revisions) else 0
+            
             status_colors = {
                 '待返稿': '#F39C12',
                 '已返稿': '#E74C3C',
@@ -137,6 +157,49 @@ class ProjectDetailDialog(QDialog):
             </div>
             """
             self.project_info_label.setText(info_text)
+            
+            self.load_risk_info(project)
+    
+    def load_risk_info(self, project):
+        risk_info = database.calculate_project_risk(project)
+        
+        risk_level = risk_info['risk_level']
+        risk_color = risk_info['risk_color']
+        risk_factors = risk_info['risk_factors']
+        risk_score = risk_info['risk_score']
+        
+        if risk_level == '高风险':
+            bg_color = '#FFF0F0'
+            border_color = '#E74C3C'
+        elif risk_level == '中风险':
+            bg_color = '#FFFAEB'
+            border_color = '#F39C12'
+        else:
+            bg_color = '#EAFBF1'
+            border_color = '#2ECC71'
+        
+        self.risk_card.setStyleSheet(f"""
+            CardWidget {{ 
+                background-color: {bg_color}; 
+                border: 2px solid {border_color}; 
+                border-radius: 8px; 
+            }}
+        """)
+        
+        title_text = f"""
+        <span style='color: {risk_color};'>⚠ 风险等级：{risk_level}</span>
+        <span style='color: #888; font-size: 13px; font-weight: normal;'>&nbsp;&nbsp;(风险评分: {risk_score})</span>
+        """
+        self.risk_title_label.setText(title_text)
+        
+        if risk_factors:
+            factors_html = '<b>风险因素：</b><br>'
+            for factor in risk_factors:
+                factors_html += f'&nbsp;&nbsp;• {factor}<br>'
+        else:
+            factors_html = '<b>风险因素：</b>暂无明显风险因素'
+        
+        self.risk_factors_label.setText(factors_html)
     
     def load_revision_list(self):
         revisions = database.get_revisions_by_project(self.project_id)

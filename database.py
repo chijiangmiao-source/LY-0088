@@ -275,3 +275,316 @@ def get_status_statistics():
     df = pd.read_sql_query(query, conn)
     conn.close()
     return df
+
+def get_all_clients():
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT DISTINCT client_name FROM projects ORDER BY client_name')
+    rows = cursor.fetchall()
+    conn.close()
+    return [row['client_name'] for row in rows]
+
+def calculate_project_risk(project):
+    from datetime import datetime, timedelta
+    
+    risk_score = 0
+    risk_factors = []
+    
+    today = datetime.now().date()
+    
+    draft_date = None
+    if project.get('draft_date'):
+        try:
+            draft_date = datetime.strptime(project['draft_date'], "%Y-%m-%d").date()
+        except:
+            pass
+    
+    expected_date = None
+    if project.get('expected_delivery_date'):
+        try:
+            expected_date = datetime.strptime(project['expected_delivery_date'], "%Y-%m-%d").date()
+        except:
+            pass
+    
+    revision_count = project.get('revision_count', 0)
+    max_round = project.get('max_round', 0)
+    has_urgent = project.get('has_urgent', 0)
+    
+    if expected_date and project.get('revision_status') not in ['已完成', '已验收']:
+        days_left = (expected_date - today).days
+        if days_left < 0:
+            risk_score += 40
+            risk_factors.append(f'已超期{abs(days_left)}天')
+        elif days_left <= 2:
+            risk_score += 30
+            risk_factors.append(f'仅剩{days_left}天交付')
+        elif days_left <= 5:
+            risk_score += 15
+            risk_factors.append(f'仅剩{days_left}天交付')
+    
+    if max_round >= 3:
+        risk_score += 25
+        risk_factors.append(f'已返稿{max_round}轮')
+    elif max_round >= 2:
+        risk_score += 15
+        risk_factors.append(f'已返稿{max_round}轮')
+    elif max_round >= 1:
+        risk_score += 5
+    
+    if has_urgent:
+        risk_score += 20
+        risk_factors.append('含加急返稿')
+    
+    if draft_date and expected_date:
+        total_days = (expected_date - draft_date).days
+        if total_days > 0 and revision_count > 0:
+            avg_days_per_rev = total_days / (revision_count + 1)
+            if avg_days_per_rev < 3:
+                risk_score += 10
+                risk_factors.append('返稿频率高')
+    
+    if risk_score >= 50:
+        risk_level = '高风险'
+        risk_color = '#E74C3C'
+    elif risk_score >= 25:
+        risk_level = '中风险'
+        risk_color = '#F39C12'
+    else:
+        risk_level = '低风险'
+        risk_color = '#2ECC71'
+    
+    return {
+        'risk_score': risk_score,
+        'risk_level': risk_level,
+        'risk_color': risk_color,
+        'risk_factors': risk_factors
+    }
+
+def get_projects_with_risk(search_keyword=None, status_filter=None, actor_filter=None, 
+                           start_date=None, end_date=None, client_filter=None):
+    conn = create_connection()
+    cursor = conn.cursor()
+    
+    query = '''
+    SELECT p.*, 
+           COUNT(r.id) as revision_count,
+           COALESCE(MAX(r.round), 0) as max_round,
+           COALESCE(MAX(r.is_urgent), 0) as has_urgent
+    FROM projects p
+    LEFT JOIN revisions r ON p.id = r.project_id
+    WHERE 1=1
+    '''
+    params = []
+    
+    if search_keyword:
+        query += ''' AND (p.project_no LIKE ? OR p.project_name LIKE ? 
+                     OR p.client_name LIKE ? OR p.voice_actor LIKE ?)'''
+        like_pattern = f'%{search_keyword}%'
+        params.extend([like_pattern, like_pattern, like_pattern, like_pattern])
+    
+    if status_filter and status_filter != '全部':
+        query += ' AND p.revision_status = ?'
+        params.append(status_filter)
+    
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    
+    if start_date:
+        query += ' AND p.draft_date >= ?'
+        params.append(start_date)
+    
+    if end_date:
+        query += ' AND p.draft_date <= ?'
+        params.append(end_date)
+    
+    query += ' GROUP BY p.id ORDER BY p.updated_at DESC'
+    
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    projects = [dict(row) for row in rows]
+    
+    for project in projects:
+        risk_info = calculate_project_risk(project)
+        project.update(risk_info)
+    
+    return projects
+
+def get_overdue_statistics(start_date=None, end_date=None, client_filter=None, actor_filter=None):
+    from datetime import datetime
+    conn = create_connection()
+    
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    query = '''
+    SELECT 
+        COUNT(*) as total_projects,
+        SUM(CASE WHEN expected_delivery_date < ? AND revision_status NOT IN ('已完成', '已验收') 
+                 THEN 1 ELSE 0 END) as overdue_count,
+        SUM(CASE WHEN expected_delivery_date >= ? AND revision_status NOT IN ('已完成', '已验收') 
+                 THEN 1 ELSE 0 END) as on_time_count,
+        SUM(CASE WHEN revision_status IN ('已完成', '已验收') THEN 1 ELSE 0 END) as completed_count
+    FROM projects p
+    WHERE 1=1
+    '''
+    params = [today, today]
+    
+    if start_date:
+        query += ' AND p.draft_date >= ?'
+        params.append(start_date)
+    
+    if end_date:
+        query += ' AND p.draft_date <= ?'
+        params.append(end_date)
+    
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+def get_revision_reasons_statistics(start_date=None, end_date=None, client_filter=None, actor_filter=None):
+    conn = create_connection()
+    
+    query = '''
+    SELECT 
+        r.reason,
+        COUNT(*) as count,
+        COUNT(DISTINCT r.project_id) as project_count
+    FROM revisions r
+    INNER JOIN projects p ON r.project_id = p.id
+    WHERE 1=1
+    '''
+    params = []
+    
+    if start_date:
+        query += ' AND r.revision_date >= ?'
+        params.append(start_date)
+    
+    if end_date:
+        query += ' AND r.revision_date <= ?'
+        params.append(end_date)
+    
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    
+    query += ' GROUP BY r.reason ORDER BY count DESC'
+    
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+def get_client_rework_cost_statistics(start_date=None, end_date=None, client_filter=None, actor_filter=None):
+    conn = create_connection()
+    
+    query = '''
+    SELECT 
+        p.client_name,
+        COUNT(DISTINCT p.id) as total_projects,
+        COUNT(r.id) as total_revisions,
+        COUNT(DISTINCT CASE WHEN r.id IS NOT NULL THEN p.id END) as projects_with_revision,
+        COALESCE(AVG(r.round), 0) as avg_round,
+        SUM(CASE WHEN r.is_urgent = 1 THEN 1 ELSE 0 END) as urgent_count,
+        COALESCE(MAX(r.round), 0) as max_round
+    FROM projects p
+    LEFT JOIN revisions r ON p.id = r.project_id
+    WHERE 1=1
+    '''
+    params = []
+    
+    if start_date:
+        query += ' AND p.draft_date >= ?'
+        params.append(start_date)
+    
+    if end_date:
+        query += ' AND p.draft_date <= ?'
+        params.append(end_date)
+    
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    
+    query += ' GROUP BY p.client_name ORDER BY total_revisions DESC'
+    
+    df = pd.read_sql_query(query, conn, params=params)
+    
+    if not df.empty:
+        df['rework_cost_score'] = df['total_revisions'] * 10 + df['urgent_count'] * 5 + df['max_round'] * 8
+    
+    conn.close()
+    return df
+
+def get_risk_level_statistics(start_date=None, end_date=None, client_filter=None, actor_filter=None):
+    projects = get_projects_with_risk(
+        start_date=start_date,
+        end_date=end_date,
+        client_filter=client_filter,
+        actor_filter=actor_filter
+    )
+    
+    risk_counts = {'高风险': 0, '中风险': 0, '低风险': 0}
+    for project in projects:
+        level = project.get('risk_level', '低风险')
+        if level in risk_counts:
+            risk_counts[level] += 1
+    
+    return pd.DataFrame(list(risk_counts.items()), columns=['risk_level', 'count'])
+
+def get_monthly_trend_statistics(start_date=None, end_date=None, client_filter=None, actor_filter=None):
+    from datetime import datetime
+    conn = create_connection()
+    
+    query = '''
+    SELECT 
+        strftime('%Y-%m', p.draft_date) as month,
+        COUNT(DISTINCT p.id) as total_projects,
+        COUNT(r.id) as total_revisions,
+        SUM(CASE WHEN r.is_urgent = 1 THEN 1 ELSE 0 END) as urgent_count
+    FROM projects p
+    LEFT JOIN revisions r ON p.id = r.project_id
+    WHERE p.draft_date IS NOT NULL
+    '''
+    params = []
+    
+    if start_date:
+        query += ' AND p.draft_date >= ?'
+        params.append(start_date)
+    
+    if end_date:
+        query += ' AND p.draft_date <= ?'
+        params.append(end_date)
+    
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    
+    query += ' GROUP BY strftime("%Y-%m", p.draft_date) ORDER BY month'
+    
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
