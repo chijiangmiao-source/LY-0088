@@ -37,7 +37,6 @@ class MainWindow(MSFluentWindow):
         self.addSubInterface(self.stats_page, FIF.BOOK_SHELF, "统计分析")
         self.addSubInterface(self.voice_actor_page, FIF.PEOPLE, "配音员维度")
         
-        self.navigationInterface.setExpandWidth(200)
         self.navigationInterface.setMinimumWidth(60)
     
     def init_navigation(self):

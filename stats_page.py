@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QGridLayout, QScrollArea)
+                               QGridLayout, QScrollArea, QFrame)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from qfluentwidgets import (CardWidget, TableWidget, PushButton, ComboBox,
@@ -35,7 +35,7 @@ class StatsPage(QWidget):
         
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QWidget.NoFrame)
+        scroll_area.setFrameShape(QFrame.NoFrame)
         
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
