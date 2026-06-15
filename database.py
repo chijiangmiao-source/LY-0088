@@ -56,14 +56,22 @@ def init_database():
         delivery_date TEXT NOT NULL,
         client_confirmed INTEGER DEFAULT 0,
         client_confirm_date TEXT,
+        review_type TEXT,
         review_conclusion TEXT,
         archived_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
     )
     ''')
 
+    cursor.execute("PRAGMA table_info(archives)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if 'review_type' not in columns:
+        cursor.execute('ALTER TABLE archives ADD COLUMN review_type TEXT')
+
     conn.commit()
     conn.close()
+
+REVIEW_TYPES = ['质量问题', '客户需求变更', '沟通问题', '流程问题', '表现优秀', '其他']
 
 def add_project(project_no, project_name, client_name, voice_actor, 
                 draft_date, expected_delivery_date=None, revision_status='待返稿', final_result=''):
@@ -639,16 +647,16 @@ def get_urgent_revision_count(start_date=None, end_date=None, client_filter=None
     return result['urgent_count'] if result else 0
 
 def add_archive(project_id, delivery_file='', delivery_version='', delivery_date='',
-                client_confirmed=0, client_confirm_date='', review_conclusion=''):
+                client_confirmed=0, client_confirm_date='', review_type='', review_conclusion=''):
     conn = create_connection()
     cursor = conn.cursor()
     try:
         cursor.execute('''
         INSERT INTO archives (project_id, delivery_file, delivery_version, delivery_date,
-                              client_confirmed, client_confirm_date, review_conclusion)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+                              client_confirmed, client_confirm_date, review_type, review_conclusion)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (project_id, delivery_file, delivery_version, delivery_date,
-              client_confirmed, client_confirm_date, review_conclusion))
+              client_confirmed, client_confirm_date, review_type, review_conclusion))
         conn.commit()
         return cursor.lastrowid
     except sqlite3.IntegrityError:
@@ -658,17 +666,17 @@ def add_archive(project_id, delivery_file='', delivery_version='', delivery_date
         conn.close()
 
 def update_archive(archive_id, delivery_file='', delivery_version='', delivery_date='',
-                   client_confirmed=0, client_confirm_date='', review_conclusion=''):
+                   client_confirmed=0, client_confirm_date='', review_type='', review_conclusion=''):
     conn = create_connection()
     cursor = conn.cursor()
     cursor.execute('''
     UPDATE archives 
     SET delivery_file=?, delivery_version=?, delivery_date=?,
-        client_confirmed=?, client_confirm_date=?, review_conclusion=?,
+        client_confirmed=?, client_confirm_date=?, review_type=?, review_conclusion=?,
         archived_at=CURRENT_TIMESTAMP
     WHERE id=?
     ''', (delivery_file, delivery_version, delivery_date,
-          client_confirmed, client_confirm_date, review_conclusion, archive_id))
+          client_confirmed, client_confirm_date, review_type, review_conclusion, archive_id))
     conn.commit()
     conn.close()
 
@@ -702,7 +710,7 @@ def get_archived_projects(client_filter=None, actor_filter=None,
 
     query = '''
     SELECT a.id as archive_id, a.delivery_file, a.delivery_version, a.delivery_date,
-           a.client_confirmed, a.client_confirm_date, a.review_conclusion, a.archived_at,
+           a.client_confirmed, a.client_confirm_date, a.review_type, a.review_conclusion, a.archived_at,
            p.id as project_id, p.project_no, p.project_name, p.client_name, p.voice_actor,
            p.draft_date, p.expected_delivery_date, p.revision_status, p.final_result,
            (SELECT COUNT(*) FROM revisions WHERE project_id = p.id) as revision_count,
@@ -863,10 +871,10 @@ def get_archive_review_summary(client_filter=None, actor_filter=None,
     conn = create_connection()
 
     query = '''
-    SELECT a.review_conclusion, COUNT(*) as count
+    SELECT COALESCE(a.review_type, '未分类') as review_type, COUNT(*) as count
     FROM archives a
     INNER JOIN projects p ON a.project_id = p.id
-    WHERE a.review_conclusion IS NOT NULL AND a.review_conclusion != ''
+    WHERE 1=1
     '''
     params = []
 
@@ -883,7 +891,7 @@ def get_archive_review_summary(client_filter=None, actor_filter=None,
         query += ' AND a.delivery_date <= ?'
         params.append(end_date)
 
-    query += ' GROUP BY a.review_conclusion ORDER BY count DESC'
+    query += ' GROUP BY a.review_type ORDER BY count DESC'
 
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()

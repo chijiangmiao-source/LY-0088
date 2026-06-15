@@ -65,6 +65,10 @@ class ArchiveDialog(QDialog):
         self.client_confirm_date_edit.setDisplayFormat("yyyy-MM-dd")
         form.addRow("客户确认日期：", self.client_confirm_date_edit)
 
+        self.review_type_combo = QComboBox()
+        self.review_type_combo.addItems(['', '质量问题', '客户需求变更', '沟通问题', '流程问题', '表现优秀', '其他'])
+        form.addRow("复盘类型：", self.review_type_combo)
+
         self.review_conclusion_edit = QTextEdit()
         self.review_conclusion_edit.setMaximumHeight(100)
         self.review_conclusion_edit.setPlaceholderText("如：项目顺利交付，客户满意度高，返稿主要因发音问题...")
@@ -103,6 +107,10 @@ class ArchiveDialog(QDialog):
         self.client_confirmed_combo.setCurrentIndex(archive['client_confirmed'])
         if archive['client_confirm_date']:
             self.client_confirm_date_edit.setDate(QDate.fromString(archive['client_confirm_date'], "yyyy-MM-dd"))
+        review_type = archive.get('review_type', '') or ''
+        idx_rt = self.review_type_combo.findText(review_type)
+        if idx_rt >= 0:
+            self.review_type_combo.setCurrentIndex(idx_rt)
         self.review_conclusion_edit.setPlainText(archive['review_conclusion'] or '')
 
     def validate_and_accept(self):
@@ -121,6 +129,7 @@ class ArchiveDialog(QDialog):
             'delivery_date': self.delivery_date_edit.date().toString("yyyy-MM-dd"),
             'client_confirmed': self.client_confirmed_combo.currentIndex(),
             'client_confirm_date': self.client_confirm_date_edit.date().toString("yyyy-MM-dd") if self.client_confirmed_combo.currentIndex() == 1 else '',
+            'review_type': self.review_type_combo.currentText().strip(),
             'review_conclusion': self.review_conclusion_edit.toPlainText().strip(),
         }
 
@@ -233,11 +242,11 @@ class ArchivePage(QWidget):
         table_layout.addWidget(table_title)
 
         self.table = TableWidget()
-        self.table.setColumnCount(12)
+        self.table.setColumnCount(14)
         self.table.setHorizontalHeaderLabels([
             "归档ID", "项目编号", "项目名称", "客户名称", "配音员",
             "交付文件", "交付版本", "交付日期", "客户确认", "确认日期",
-            "返稿轮次", "复盘结论"
+            "返稿轮次", "复盘类型", "复盘结论", "归档时间"
         ])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -429,10 +438,26 @@ class ArchivePage(QWidget):
                 round_item.setForeground(QColor('#F39C12'))
             self.table.setItem(row, 10, round_item)
 
+            review_type = arc.get('review_type', '') or '未分类'
+            type_colors = {
+                '质量问题': '#E74C3C', '客户需求变更': '#F39C12',
+                '沟通问题': '#9B59B6', '流程问题': '#3498DB',
+                '表现优秀': '#2ECC71', '其他': '#95A5A6',
+                '未分类': '#BDC3C7'
+            }
+            type_item = QTableWidgetItem(review_type)
+            type_item.setForeground(QColor(type_colors.get(review_type, '#333')))
+            self.table.setItem(row, 11, type_item)
+
             conclusion = arc['review_conclusion'] or '-'
             if len(conclusion) > 30:
                 conclusion = conclusion[:30] + '...'
-            self.table.setItem(row, 11, QTableWidgetItem(conclusion))
+            self.table.setItem(row, 12, QTableWidgetItem(conclusion))
+
+            archived_at = arc.get('archived_at', '') or ''
+            if archived_at and ' ' in archived_at:
+                archived_at = archived_at.split(' ')[0]
+            self.table.setItem(row, 13, QTableWidgetItem(archived_at or '-'))
 
     def load_summary(self, params):
         archives = database.get_archived_projects(
@@ -614,15 +639,22 @@ class ArchivePage(QWidget):
             end_date=params['end_date']
         )
 
-        if df.empty:
+        if df.empty or df['count'].sum() == 0:
             ax.text(0.5, 0.5, "暂无数据", ha='center', va='center',
                     fontsize=14, color='gray', transform=ax.transAxes)
             ax.set_axis_off()
         else:
-            df_top = df.head(8)
-            colors = plt.cm.Set3(range(len(df_top)))
+            type_colors = {
+                '质量问题': '#E74C3C', '客户需求变更': '#F39C12',
+                '沟通问题': '#9B59B6', '流程问题': '#3498DB',
+                '表现优秀': '#2ECC71', '其他': '#95A5A6',
+                '未分类': '#BDC3C7'
+            }
 
-            bars = ax.barh(df_top['review_conclusion'][::-1], df_top['count'][::-1], color=colors)
+            df_sorted = df.sort_values('count', ascending=True)
+            colors = [type_colors.get(rt, '#3498DB') for rt in df_sorted['review_type']]
+
+            bars = ax.barh(df_sorted['review_type'], df_sorted['count'], color=colors)
 
             for bar in bars:
                 width = bar.get_width()
@@ -661,6 +693,7 @@ class ArchivePage(QWidget):
                     delivery_date=data['delivery_date'],
                     client_confirmed=data['client_confirmed'],
                     client_confirm_date=data['client_confirm_date'],
+                    review_type=data['review_type'],
                     review_conclusion=data['review_conclusion']
                 )
                 self.show_success("归档成功")
@@ -684,6 +717,7 @@ class ArchivePage(QWidget):
                 delivery_date=data['delivery_date'],
                 client_confirmed=data['client_confirmed'],
                 client_confirm_date=data['client_confirm_date'],
+                review_type=data['review_type'],
                 review_conclusion=data['review_conclusion']
             )
             self.show_success("更新成功")

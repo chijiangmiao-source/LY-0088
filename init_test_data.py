@@ -71,14 +71,14 @@ def init_test_data():
                 )
 
     review_conclusions = [
-        '项目顺利交付，客户满意度高',
-        '返稿主要因发音问题，需加强审听',
-        '客户要求频繁变更导致返稿',
-        '配音员表现优异，一次通过',
-        '音质问题导致多次返稿',
-        '沟通不畅导致返稿增加',
-        '加急项目处理得当，按时交付',
-        '客户内部流程变化导致延期确认',
+        ('表现优秀', '项目顺利交付，客户满意度高'),
+        ('质量问题', '返稿主要因发音问题，需加强审听'),
+        ('客户需求变更', '客户要求频繁变更导致返稿'),
+        ('表现优秀', '配音员表现优异，一次通过'),
+        ('质量问题', '音质问题导致多次返稿'),
+        ('沟通问题', '沟通不畅导致返稿增加'),
+        ('流程问题', '加急项目处理得当，按时交付'),
+        ('流程问题', '客户内部流程变化导致延期确认'),
     ]
 
     archive_count = 0
@@ -98,7 +98,7 @@ def init_test_data():
                 'final_mix.wav', 'final_v2.mp3', 'delivery_master.wav',
                 'final_stereo.wav', 'complete_pack.zip', 'final_delivery.wav'
             ])
-            review_conclusion = random.choice(review_conclusions)
+            review_type, review_conclusion = random.choice(review_conclusions)
 
             database.add_archive(
                 project_id=project_id,
@@ -107,6 +107,7 @@ def init_test_data():
                 delivery_date=delivery_date,
                 client_confirmed=client_confirmed,
                 client_confirm_date=client_confirm_date,
+                review_type=review_type,
                 review_conclusion=review_conclusion
             )
             archive_count += 1
