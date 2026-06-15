@@ -12,6 +12,7 @@ from project_detail_dialog import ProjectDetailDialog
 from stats_page import StatsPage
 from voice_actor_page import VoiceActorPage
 from archive_page import ArchivePage
+from template_export_page import TemplateExportPage
 import database
 
 REVISION_STATUS = ['全部', '待返稿', '已返稿', '已验收', '已完成']
@@ -34,11 +35,13 @@ class MainWindow(MSFluentWindow):
         self.stats_page = StatsPage(self)
         self.voice_actor_page = VoiceActorPage(self)
         self.archive_page = ArchivePage(self)
+        self.template_export_page = TemplateExportPage(self)
         
         self.addSubInterface(self.project_page, FIF.HOME, "项目管理")
         self.addSubInterface(self.stats_page, FIF.BOOK_SHELF, "统计分析")
         self.addSubInterface(self.voice_actor_page, FIF.PEOPLE, "配音员维度")
         self.addSubInterface(self.archive_page, FIF.FOLDER, "交付归档")
+        self.addSubInterface(self.template_export_page, FIF.SAVE_AS, "模板与导出")
         
         self.navigationInterface.setMinimumWidth(60)
     
@@ -52,6 +55,8 @@ class MainWindow(MSFluentWindow):
             self.voice_actor_page.refresh()
         elif index == 3:
             self.archive_page.refresh()
+        elif index == 4:
+            self.template_export_page.refresh()
         elif index == 0:
             self.project_page.refresh()
 

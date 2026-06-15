@@ -68,6 +68,23 @@ def init_database():
     if 'review_type' not in columns:
         cursor.execute('ALTER TABLE archives ADD COLUMN review_type TEXT')
 
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS archive_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_name TEXT NOT NULL,
+        client_name TEXT,
+        project_type TEXT,
+        delivery_file_rule TEXT,
+        delivery_version_rule TEXT,
+        review_type TEXT,
+        review_conclusion_template TEXT,
+        confirm_process TEXT,
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -896,3 +913,118 @@ def get_archive_review_summary(client_filter=None, actor_filter=None,
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
+
+
+def add_archive_template(template_name, client_name='', project_type='',
+                         delivery_file_rule='', delivery_version_rule='',
+                         review_type='', review_conclusion_template='',
+                         confirm_process='', is_default=0):
+    conn = create_connection()
+    cursor = conn.cursor()
+    try:
+        if is_default:
+            cursor.execute('UPDATE archive_templates SET is_default = 0 WHERE is_default = 1')
+        cursor.execute('''
+        INSERT INTO archive_templates (template_name, client_name, project_type,
+                                       delivery_file_rule, delivery_version_rule,
+                                       review_type, review_conclusion_template,
+                                       confirm_process, is_default)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (template_name, client_name, project_type,
+              delivery_file_rule, delivery_version_rule,
+              review_type, review_conclusion_template,
+              confirm_process, is_default))
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise ValueError(f"模板名称 {template_name} 已存在")
+    finally:
+        conn.close()
+
+
+def update_archive_template(template_id, template_name, client_name='', project_type='',
+                            delivery_file_rule='', delivery_version_rule='',
+                            review_type='', review_conclusion_template='',
+                            confirm_process='', is_default=0):
+    conn = create_connection()
+    cursor = conn.cursor()
+    try:
+        if is_default:
+            cursor.execute('UPDATE archive_templates SET is_default = 0 WHERE is_default = 1 AND id != ?', (template_id,))
+        cursor.execute('''
+        UPDATE archive_templates 
+        SET template_name=?, client_name=?, project_type=?,
+            delivery_file_rule=?, delivery_version_rule=?,
+            review_type=?, review_conclusion_template=?,
+            confirm_process=?, is_default=?, updated_at=CURRENT_TIMESTAMP
+        WHERE id=?
+        ''', (template_name, client_name, project_type,
+              delivery_file_rule, delivery_version_rule,
+              review_type, review_conclusion_template,
+              confirm_process, is_default, template_id))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise ValueError(f"模板名称 {template_name} 已存在")
+    finally:
+        conn.close()
+
+
+def delete_archive_template(template_id):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM archive_templates WHERE id=?', (template_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_archive_template_by_id(template_id):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM archive_templates WHERE id=?', (template_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_archive_templates(client_name=None, project_type=None):
+    conn = create_connection()
+    cursor = conn.cursor()
+    query = 'SELECT * FROM archive_templates WHERE 1=1'
+    params = []
+    if client_name and client_name != '全部':
+        query += ' AND (client_name = ? OR client_name = "")'
+        params.append(client_name)
+    if project_type and project_type != '全部':
+        query += ' AND (project_type = ? OR project_type = "")'
+        params.append(project_type)
+    query += ' ORDER BY is_default DESC, updated_at DESC'
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_default_archive_template():
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM archive_templates WHERE is_default = 1 LIMIT 1')
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_archive_templates_by_client(client_name):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT * FROM archive_templates 
+    WHERE client_name = ? OR client_name = '' OR is_default = 1
+    ORDER BY is_default DESC, 
+             CASE WHEN client_name = ? THEN 0 ELSE 1 END,
+             updated_at DESC
+    ''', (client_name, client_name))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]

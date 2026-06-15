@@ -112,9 +112,74 @@ def init_test_data():
             )
             archive_count += 1
 
+    templates = [
+        {
+            'template_name': '通用标准模板',
+            'client_name': '',
+            'project_type': '',
+            'delivery_file_rule': '{客户名称}_{项目编号}_final.wav',
+            'delivery_version_rule': 'v1.0',
+            'review_type': '',
+            'review_conclusion_template': '项目{项目名称}已完成交付，整体质量良好。',
+            'confirm_process': '1.初审→2.客户试听→3.修改→4.终验',
+            'is_default': 1
+        },
+        {
+            'template_name': '腾讯游戏专属模板',
+            'client_name': '腾讯游戏',
+            'project_type': '游戏配音',
+            'delivery_file_rule': 'Tencent_{项目编号}_{项目名称}_v{版本}.wav',
+            'delivery_version_rule': 'final',
+            'review_type': '质量问题',
+            'review_conclusion_template': '腾讯游戏项目{项目名称}交付完成，需关注发音准确性。',
+            'confirm_process': '1.录音师审听→2.导演审核→3.腾讯QA验收→4.最终交付',
+            'is_default': 0
+        },
+        {
+            'template_name': '喜马拉雅有声书模板',
+            'client_name': '喜马拉雅',
+            'project_type': '有声书',
+            'delivery_file_rule': 'Ximalaya_{项目编号}_Chapter{章节}_final.mp3',
+            'delivery_version_rule': 'v2.0',
+            'review_type': '表现优秀',
+            'review_conclusion_template': '喜马拉雅项目{项目名称}交付顺利，客户满意度高。',
+            'confirm_process': '1.主播录制→2.后期制作→3.编辑审核→4.平台上架',
+            'is_default': 0
+        },
+        {
+            'template_name': '广告配音模板',
+            'client_name': '',
+            'project_type': '广告配音',
+            'delivery_file_rule': 'AD_{客户名称}_{日期}_{项目编号}.wav',
+            'delivery_version_rule': 'v1.0',
+            'review_type': '客户需求变更',
+            'review_conclusion_template': '广告项目{项目名称}已完成，需注意客户需求变更频率。',
+            'confirm_process': '1.初配→2.客户反馈→3.修改→4.终审',
+            'is_default': 0
+        },
+        {
+            'template_name': 'B站二次元模板',
+            'client_name': 'B站',
+            'project_type': '动漫配音',
+            'delivery_file_rule': 'Bilibili_{项目名称}_EP{集数}_final.wav',
+            'delivery_version_rule': 'v1.5',
+            'review_type': '表现优秀',
+            'review_conclusion_template': 'B站动漫项目{项目名称}配音完成，角色表现力强。',
+            'confirm_process': '1.试音→2.导演确认→3.正片录制→4.后期混音→5.交付',
+            'is_default': 0
+        }
+    ]
+
+    for tpl in templates:
+        try:
+            database.add_archive_template(**tpl)
+        except ValueError:
+            pass
+
     print("测试数据初始化完成！")
     print(f"已创建 {len(projects)} 个项目，包含若干返稿记录。")
     print(f"已归档 {archive_count} 个已完成/已验收项目。")
+    print(f"已创建 {len(templates)} 个归档模板。")
 
 if __name__ == "__main__":
     init_test_data()

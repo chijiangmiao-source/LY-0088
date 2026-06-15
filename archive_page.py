@@ -27,7 +27,7 @@ class ArchiveDialog(QDialog):
         super().__init__(parent)
         self.archive_id = archive_id
         self.setWindowTitle("编辑归档" if archive_id else "新增归档")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(550)
         self.init_ui()
         if archive_id:
             self.load_data()
@@ -39,7 +39,13 @@ class ArchiveDialog(QDialog):
 
         self.project_combo = QComboBox()
         self._load_projects()
+        self.project_combo.currentIndexChanged.connect(self.on_project_changed)
         form.addRow("选择项目*：", self.project_combo)
+
+        self.template_combo = QComboBox()
+        self.template_combo.setMinimumWidth(300)
+        self.template_combo.currentIndexChanged.connect(self.on_template_changed)
+        form.addRow("归档模板：", self.template_combo)
 
         self.delivery_file_edit = QLineEdit()
         self.delivery_file_edit.setPlaceholderText("如：final_v2.wav")
@@ -91,6 +97,78 @@ class ArchiveDialog(QDialog):
             if existing and (self.archive_id is None or existing['id'] != self.archive_id):
                 continue
             self.project_combo.addItem(f"{p['project_no']} - {p['project_name']}", p['id'])
+        self._load_templates_for_current_project()
+
+    def _load_templates_for_current_project(self):
+        self.template_combo.blockSignals(True)
+        self.template_combo.clear()
+        self.template_combo.addItem("-- 不使用模板 --", None)
+
+        project_id = self.project_combo.currentData()
+        client_name = ''
+        if project_id:
+            project = database.get_project_by_id(project_id)
+            if project:
+                client_name = project.get('client_name', '')
+
+        if client_name:
+            templates = database.get_archive_templates_by_client(client_name)
+        else:
+            templates = database.get_all_archive_templates()
+
+        for tpl in templates:
+            label = tpl['template_name']
+            if tpl.get('is_default'):
+                label += " ★"
+            if tpl.get('client_name'):
+                label += f" ({tpl['client_name']})"
+            self.template_combo.addItem(label, tpl['id'])
+
+        if self.template_combo.count() > 1:
+            self.template_combo.setCurrentIndex(1)
+        self.template_combo.blockSignals(False)
+
+    def on_project_changed(self):
+        self._load_templates_for_current_project()
+
+    def on_template_changed(self):
+        template_id = self.template_combo.currentData()
+        if not template_id:
+            return
+
+        template = database.get_archive_template_by_id(template_id)
+        if not template:
+            return
+
+        project_id = self.project_combo.currentData()
+        project = database.get_project_by_id(project_id) if project_id else None
+        project_no = project.get('project_no', '') if project else ''
+        project_name = project.get('project_name', '') if project else ''
+        client_name = project.get('client_name', '') if project else ''
+        date_str = QDate.currentDate().toString("yyyyMMdd")
+
+        if template.get('delivery_file_rule') and not self.delivery_file_edit.text():
+            rule = template['delivery_file_rule']
+            file_name = rule.replace('{项目编号}', project_no) \
+                           .replace('{项目名称}', project_name) \
+                           .replace('{客户名称}', client_name) \
+                           .replace('{日期}', date_str)
+            self.delivery_file_edit.setText(file_name)
+
+        if template.get('delivery_version_rule') and not self.delivery_version_edit.text():
+            self.delivery_version_edit.setText(template['delivery_version_rule'])
+
+        if template.get('review_type'):
+            idx = self.review_type_combo.findText(template['review_type'])
+            if idx >= 0:
+                self.review_type_combo.setCurrentIndex(idx)
+
+        if template.get('review_conclusion_template') and not self.review_conclusion_edit.toPlainText():
+            conclusion = template['review_conclusion_template']
+            conclusion = conclusion.replace('{项目编号}', project_no) \
+                                   .replace('{项目名称}', project_name) \
+                                   .replace('{客户名称}', client_name)
+            self.review_conclusion_edit.setPlainText(conclusion)
 
     def load_data(self):
         archive = database.get_archive_by_id(self.archive_id)
