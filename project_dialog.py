@@ -50,11 +50,13 @@ class ProjectDialog(QDialog):
         self.draft_date_edit = DateEdit()
         self.draft_date_edit.setCalendarPopup(True)
         self.draft_date_edit.setDate(QDate.currentDate())
+        self.draft_date_edit.dateChanged.connect(self.on_draft_date_changed)
         form_layout.addRow("初稿日期:", self.draft_date_edit)
         
         self.expected_date_edit = DateEdit()
         self.expected_date_edit.setCalendarPopup(True)
         self.expected_date_edit.setDate(QDate.currentDate().addDays(7))
+        self.expected_date_edit.setMinimumDate(QDate.currentDate())
         self.expected_date_edit.setSpecialValueText(" ")
         form_layout.addRow("预计交付日期:", self.expected_date_edit)
         
@@ -89,12 +91,16 @@ class ProjectDialog(QDialog):
             self.client_name_edit.setText(project['client_name'])
             self.voice_actor_edit.setText(project['voice_actor'])
             
+            draft_date = None
             if project['draft_date']:
                 draft_date = QDate.fromString(project['draft_date'], "yyyy-MM-dd")
                 self.draft_date_edit.setDate(draft_date)
+                self.expected_date_edit.setMinimumDate(draft_date)
             
             if project['expected_delivery_date']:
                 exp_date = QDate.fromString(project['expected_delivery_date'], "yyyy-MM-dd")
+                if draft_date and exp_date < draft_date:
+                    exp_date = draft_date
                 self.expected_date_edit.setDate(exp_date)
             
             if project['revision_status'] in REVISION_STATUS:
@@ -102,6 +108,11 @@ class ProjectDialog(QDialog):
             
             if project['final_result'] in FINAL_RESULTS:
                 self.final_result_combo.setCurrentText(project['final_result'])
+    
+    def on_draft_date_changed(self, new_date):
+        self.expected_date_edit.setMinimumDate(new_date)
+        if self.expected_date_edit.date() < new_date:
+            self.expected_date_edit.setDate(new_date)
     
     def on_ok_clicked(self):
         project_no = self.project_no_edit.text().strip()
@@ -127,6 +138,10 @@ class ProjectDialog(QDialog):
         
         if not voice_actor:
             self.show_error("请输入配音员")
+            return
+        
+        if self.expected_date_edit.date() < self.draft_date_edit.date():
+            self.show_error("预计交付日期不能早于初稿日期")
             return
         
         try:

@@ -54,6 +54,10 @@ class ProjectPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("ProjectPage")
+        self.setStyleSheet("""
+            ProjectPage { background-color: white; }
+            QLabel { color: #333; }
+        """)
         self.init_ui()
         self.load_filters()
         self.load_projects()

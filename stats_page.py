@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QGridLayout, QScrollArea, QFrame)
+                               QScrollArea, QFrame, QTableWidgetItem)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
-from qfluentwidgets import (CardWidget, TableWidget, PushButton, ComboBox,
-                            SubtitleLabel, TitleLabel, StrongBodyLabel)
+from PySide6.QtGui import QPalette, QColor
+from qfluentwidgets import (CardWidget, TableWidget, ComboBox,
+                            SubtitleLabel, TitleLabel)
 
 import matplotlib
 matplotlib.use('QtAgg')
@@ -22,6 +22,14 @@ class StatsPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("StatsPage")
+        
+        self.setStyleSheet("""
+            StatsPage { background-color: white; }
+            QScrollArea { background-color: white; border: none; }
+            QWidget#contentWidget { background-color: white; }
+            QLabel { color: #333; }
+        """)
+        
         self.init_ui()
         self.load_statistics()
     
@@ -36,8 +44,12 @@ class StatsPage(QWidget):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: white; }")
         
         content_widget = QWidget()
+        content_widget.setObjectName("contentWidget")
+        content_widget.setStyleSheet("#contentWidget { background-color: white; }")
+        
         content_layout = QVBoxLayout(content_widget)
         content_layout.setSpacing(15)
         
@@ -47,15 +59,15 @@ class StatsPage(QWidget):
         chart_row1 = QHBoxLayout()
         chart_row1.setSpacing(15)
         
-        self.reason_chart_card = self.create_chart_card("返稿原因分布")
+        self.reason_chart_card, self.reason_figure, self.reason_canvas = self.create_chart_card("返稿原因分布")
         chart_row1.addWidget(self.reason_chart_card, 1)
         
-        self.status_chart_card = self.create_chart_card("项目状态分布")
+        self.status_chart_card, self.status_figure, self.status_canvas = self.create_chart_card("项目状态分布")
         chart_row1.addWidget(self.status_chart_card, 1)
         
         content_layout.addLayout(chart_row1)
         
-        self.monthly_chart_card = self.create_wide_chart_card("月度项目与返稿趋势")
+        self.monthly_chart_card, self.monthly_figure, self.monthly_canvas = self.create_wide_chart_card("月度项目与返稿趋势")
         content_layout.addWidget(self.monthly_chart_card)
         
         self.actor_card = self.create_actor_stat_card()
@@ -67,6 +79,7 @@ class StatsPage(QWidget):
     
     def create_summary_card(self):
         card = CardWidget()
+        card.setStyleSheet("CardWidget { background-color: #fafafa; border: 1px solid #e8e8e8; border-radius: 8px; }")
         layout = QHBoxLayout(card)
         layout.setSpacing(20)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -89,17 +102,18 @@ class StatsPage(QWidget):
         
         for label, value, color in stats_data:
             stat_widget = QWidget()
+            stat_widget.setStyleSheet("background-color: transparent;")
             stat_layout = QVBoxLayout(stat_widget)
             stat_layout.setSpacing(5)
             stat_layout.setAlignment(Qt.AlignCenter)
             
             value_label = QLabel(str(value))
             value_label.setAlignment(Qt.AlignCenter)
-            value_label.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {color};")
+            value_label.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {color}; background-color: transparent;")
             
             label_label = QLabel(label)
             label_label.setAlignment(Qt.AlignCenter)
-            label_label.setStyleSheet("font-size: 13px; color: #666;")
+            label_label.setStyleSheet("font-size: 13px; color: #666; background-color: transparent;")
             
             stat_layout.addWidget(value_label)
             stat_layout.addWidget(label_label)
@@ -109,36 +123,42 @@ class StatsPage(QWidget):
     
     def create_chart_card(self, title):
         card = CardWidget()
+        card.setStyleSheet("CardWidget { background-color: white; border: 1px solid #e8e8e8; border-radius: 8px; }")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(15, 15, 15, 15)
         
         title_label = SubtitleLabel(title)
         layout.addWidget(title_label)
         
-        self.figure = Figure(figsize=(4, 3.5), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        layout.addWidget(self.canvas)
+        figure = Figure(figsize=(4, 3.5), dpi=100, facecolor='white')
+        canvas = FigureCanvas(figure)
+        canvas.setStyleSheet("background-color: white;")
+        layout.addWidget(canvas)
         
-        return card
+        return card, figure, canvas
     
     def create_wide_chart_card(self, title):
         card = CardWidget()
+        card.setStyleSheet("CardWidget { background-color: white; border: 1px solid #e8e8e8; border-radius: 8px; }")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(15, 15, 15, 15)
         
         title_label = SubtitleLabel(title)
         layout.addWidget(title_label)
         
-        self.monthly_figure = Figure(figsize=(8, 3.5), dpi=100)
-        self.monthly_canvas = FigureCanvas(self.monthly_figure)
-        layout.addWidget(self.monthly_canvas)
+        figure = Figure(figsize=(8, 3.5), dpi=100, facecolor='white')
+        canvas = FigureCanvas(figure)
+        canvas.setStyleSheet("background-color: white;")
+        layout.addWidget(canvas)
         
-        return card
+        return card, figure, canvas
     
     def create_actor_stat_card(self):
         card = CardWidget()
+        card.setStyleSheet("CardWidget { background-color: white; border: 1px solid #e8e8e8; border-radius: 8px; }")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
         
         title_label = SubtitleLabel("配音员维度统计")
         layout.addWidget(title_label)
@@ -163,8 +183,9 @@ class StatsPage(QWidget):
         self.load_actor_stats()
     
     def plot_reason_chart(self):
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
+        self.reason_figure.clear()
+        ax = self.reason_figure.add_subplot(111)
+        ax.set_facecolor('white')
         
         df = database.get_revision_statistics()
         
@@ -181,6 +202,7 @@ class StatsPage(QWidget):
             
             for text in texts:
                 text.set_fontsize(9)
+                text.set_color('#333')
             for autotext in autotexts:
                 autotext.set_fontsize(8)
                 autotext.set_color('white')
@@ -189,19 +211,13 @@ class StatsPage(QWidget):
             centre_circle = plt.Circle((0, 0), 0.70, fc='white')
             ax.add_artist(centre_circle)
         
-        self.figure.tight_layout()
-        self.canvas.draw()
+        self.reason_figure.tight_layout()
+        self.reason_canvas.draw()
     
     def plot_status_chart(self):
-        self.status_figure = Figure(figsize=(4, 3.5), dpi=100)
-        status_canvas = self.status_chart_card.findChild(FigureCanvas)
-        if status_canvas is None:
-            status_canvas = FigureCanvas(self.status_figure)
-            self.status_chart_card.layout().addWidget(status_canvas)
-        else:
-            status_canvas.figure = self.status_figure
-        
+        self.status_figure.clear()
         ax = self.status_figure.add_subplot(111)
+        ax.set_facecolor('white')
         
         df = database.get_status_statistics()
         
@@ -216,18 +232,22 @@ class StatsPage(QWidget):
             for bar in bars:
                 height = bar.get_height()
                 ax.text(bar.get_x() + bar.get_width()/2., height,
-                       f'{int(height)}', ha='center', va='bottom', fontsize=10)
+                       f'{int(height)}', ha='center', va='bottom', fontsize=10, color='#333')
             
-            ax.set_ylabel('项目数')
-            ax.tick_params(axis='x', rotation=15)
-            ax.grid(axis='y', alpha=0.3)
+            ax.set_ylabel('项目数', color='#333')
+            ax.tick_params(axis='x', rotation=15, colors='#333')
+            ax.tick_params(axis='y', colors='#333')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.grid(axis='y', alpha=0.3, color='#ccc')
         
         self.status_figure.tight_layout()
-        status_canvas.draw()
+        self.status_canvas.draw()
     
     def plot_monthly_chart(self):
         self.monthly_figure.clear()
         ax = self.monthly_figure.add_subplot(111)
+        ax.set_facecolor('white')
         
         df = database.get_monthly_statistics()
         
@@ -247,17 +267,20 @@ class StatsPage(QWidget):
             for bar in bars1:
                 height = bar.get_height()
                 ax.text(bar.get_x() + bar.get_width()/2., height,
-                       f'{int(height)}', ha='center', va='bottom', fontsize=9)
+                       f'{int(height)}', ha='center', va='bottom', fontsize=9, color='#333')
             for bar in bars2:
                 height = bar.get_height()
                 ax.text(bar.get_x() + bar.get_width()/2., height,
-                       f'{int(height)}', ha='center', va='bottom', fontsize=9)
+                       f'{int(height)}', ha='center', va='bottom', fontsize=9, color='#333')
             
             ax.set_xticks(x)
-            ax.set_xticklabels(df['month'], rotation=30, ha='right')
-            ax.set_ylabel('数量')
+            ax.set_xticklabels(df['month'], rotation=30, ha='right', color='#333')
+            ax.set_ylabel('数量', color='#333')
+            ax.tick_params(axis='y', colors='#333')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
             ax.legend()
-            ax.grid(axis='y', alpha=0.3)
+            ax.grid(axis='y', alpha=0.3, color='#ccc')
         
         self.monthly_figure.tight_layout()
         self.monthly_canvas.draw()
@@ -281,5 +304,3 @@ class StatsPage(QWidget):
     
     def refresh(self):
         self.load_statistics()
-
-from PySide6.QtWidgets import QTableWidgetItem

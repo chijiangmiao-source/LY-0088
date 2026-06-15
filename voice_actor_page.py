@@ -12,6 +12,10 @@ class VoiceActorPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VoiceActorPage")
+        self.setStyleSheet("""
+            VoiceActorPage { background-color: white; }
+            QLabel { color: #333; }
+        """)
         self.init_ui()
         self.load_actors()
     
