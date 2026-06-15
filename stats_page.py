@@ -58,7 +58,7 @@ class StatsPage(QWidget):
         
         self.date_start = DateEdit()
         self.date_start.setCalendarPopup(True)
-        self.date_start.setDate(QDate.currentDate().addMonths(-3))
+        self.date_start.setDate(QDate(2000, 1, 1))
         self.date_start.dateChanged.connect(self.on_filter_changed)
         filter_layout.addWidget(self.date_start)
         
@@ -318,7 +318,12 @@ class StatsPage(QWidget):
         projects_with_revision = sum(1 for p in projects if p['revision_count'] > 0)
         total_revisions = sum(p['revision_count'] for p in projects)
         high_risk_count = sum(1 for p in projects if p['risk_level'] == '高风险')
-        urgent_count = sum(1 for p in projects if p.get('has_urgent', 0) == 1)
+        urgent_count = database.get_urgent_revision_count(
+            start_date=params['start_date'],
+            end_date=params['end_date'],
+            client_filter=params['client_filter'],
+            actor_filter=params['actor_filter']
+        )
         
         avg_round = (total_revisions / projects_with_revision) if projects_with_revision > 0 else 0
         

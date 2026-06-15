@@ -256,6 +256,7 @@ class ProjectDetailDialog(QDialog):
         dialog = RevisionDialog(self, revision_id=revision_id)
         if dialog.exec():
             self.load_revision_list()
+            self.load_project_info()
             self.show_success("返稿记录更新成功")
     
     def on_delete_revision(self):

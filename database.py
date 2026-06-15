@@ -588,3 +588,37 @@ def get_monthly_trend_statistics(start_date=None, end_date=None, client_filter=N
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
+
+def get_urgent_revision_count(start_date=None, end_date=None, client_filter=None, actor_filter=None):
+    conn = create_connection()
+    
+    query = '''
+    SELECT COUNT(*) as urgent_count
+    FROM revisions r
+    INNER JOIN projects p ON r.project_id = p.id
+    WHERE r.is_urgent = 1
+    '''
+    params = []
+    
+    if start_date:
+        query += ' AND r.revision_date >= ?'
+        params.append(start_date)
+    
+    if end_date:
+        query += ' AND r.revision_date <= ?'
+        params.append(end_date)
+    
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    result = cursor.fetchone()
+    conn.close()
+    
+    return result['urgent_count'] if result else 0
