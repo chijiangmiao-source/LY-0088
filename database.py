@@ -47,6 +47,21 @@ def init_database():
     )
     ''')
 
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS archives (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL UNIQUE,
+        delivery_file TEXT,
+        delivery_version TEXT,
+        delivery_date TEXT NOT NULL,
+        client_confirmed INTEGER DEFAULT 0,
+        client_confirm_date TEXT,
+        review_conclusion TEXT,
+        archived_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+    )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -622,3 +637,254 @@ def get_urgent_revision_count(start_date=None, end_date=None, client_filter=None
     conn.close()
     
     return result['urgent_count'] if result else 0
+
+def add_archive(project_id, delivery_file='', delivery_version='', delivery_date='',
+                client_confirmed=0, client_confirm_date='', review_conclusion=''):
+    conn = create_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+        INSERT INTO archives (project_id, delivery_file, delivery_version, delivery_date,
+                              client_confirmed, client_confirm_date, review_conclusion)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (project_id, delivery_file, delivery_version, delivery_date,
+              client_confirmed, client_confirm_date, review_conclusion))
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise ValueError(f"项目ID {project_id} 已归档")
+    finally:
+        conn.close()
+
+def update_archive(archive_id, delivery_file='', delivery_version='', delivery_date='',
+                   client_confirmed=0, client_confirm_date='', review_conclusion=''):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    UPDATE archives 
+    SET delivery_file=?, delivery_version=?, delivery_date=?,
+        client_confirmed=?, client_confirm_date=?, review_conclusion=?,
+        archived_at=CURRENT_TIMESTAMP
+    WHERE id=?
+    ''', (delivery_file, delivery_version, delivery_date,
+          client_confirmed, client_confirm_date, review_conclusion, archive_id))
+    conn.commit()
+    conn.close()
+
+def delete_archive(archive_id):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM archives WHERE id=?', (archive_id,))
+    conn.commit()
+    conn.close()
+
+def get_archive_by_id(archive_id):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM archives WHERE id=?', (archive_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_archive_by_project_id(project_id):
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM archives WHERE project_id=?', (project_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_archived_projects(client_filter=None, actor_filter=None,
+                          start_date=None, end_date=None):
+    conn = create_connection()
+    cursor = conn.cursor()
+
+    query = '''
+    SELECT a.id as archive_id, a.delivery_file, a.delivery_version, a.delivery_date,
+           a.client_confirmed, a.client_confirm_date, a.review_conclusion, a.archived_at,
+           p.id as project_id, p.project_no, p.project_name, p.client_name, p.voice_actor,
+           p.draft_date, p.expected_delivery_date, p.revision_status, p.final_result,
+           (SELECT COUNT(*) FROM revisions WHERE project_id = p.id) as revision_count,
+           (SELECT COALESCE(MAX(round), 0) FROM revisions WHERE project_id = p.id) as max_round
+    FROM archives a
+    INNER JOIN projects p ON a.project_id = p.id
+    WHERE 1=1
+    '''
+    params = []
+
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+
+    if start_date:
+        query += ' AND a.delivery_date >= ?'
+        params.append(start_date)
+
+    if end_date:
+        query += ' AND a.delivery_date <= ?'
+        params.append(end_date)
+
+    query += ' ORDER BY a.archived_at DESC'
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def get_archive_completion_rate(client_filter=None, actor_filter=None,
+                                start_date=None, end_date=None):
+    conn = create_connection()
+
+    query_total = '''
+    SELECT COUNT(*) as total FROM projects p WHERE p.revision_status IN ('已完成', '已验收')
+    '''
+    params_total = []
+
+    if client_filter and client_filter != '全部':
+        query_total += ' AND p.client_name = ?'
+        params_total.append(client_filter)
+    if actor_filter and actor_filter != '全部':
+        query_total += ' AND p.voice_actor = ?'
+        params_total.append(actor_filter)
+    if start_date:
+        query_total += ' AND p.draft_date >= ?'
+        params_total.append(start_date)
+    if end_date:
+        query_total += ' AND p.draft_date <= ?'
+        params_total.append(end_date)
+
+    cursor = conn.cursor()
+    cursor.execute(query_total, params_total)
+    total = cursor.fetchone()[0]
+
+    query_archived = '''
+    SELECT COUNT(*) as archived FROM archives a
+    INNER JOIN projects p ON a.project_id = p.id
+    WHERE 1=1
+    '''
+    params_archived = []
+
+    if client_filter and client_filter != '全部':
+        query_archived += ' AND p.client_name = ?'
+        params_archived.append(client_filter)
+    if actor_filter and actor_filter != '全部':
+        query_archived += ' AND p.voice_actor = ?'
+        params_archived.append(actor_filter)
+    if start_date:
+        query_archived += ' AND a.delivery_date >= ?'
+        params_archived.append(start_date)
+    if end_date:
+        query_archived += ' AND a.delivery_date <= ?'
+        params_archived.append(end_date)
+
+    cursor.execute(query_archived, params_archived)
+    archived = cursor.fetchone()[0]
+    conn.close()
+
+    return {'total': total, 'archived': archived,
+            'rate': (archived / total * 100) if total > 0 else 0}
+
+def get_client_confirm_cycle_statistics(client_filter=None, actor_filter=None,
+                                        start_date=None, end_date=None):
+    conn = create_connection()
+
+    query = '''
+    SELECT p.client_name,
+           AVG(julianday(a.client_confirm_date) - julianday(a.delivery_date)) as avg_confirm_days,
+           MIN(julianday(a.client_confirm_date) - julianday(a.delivery_date)) as min_confirm_days,
+           MAX(julianday(a.client_confirm_date) - julianday(a.delivery_date)) as max_confirm_days,
+           COUNT(*) as confirmed_count
+    FROM archives a
+    INNER JOIN projects p ON a.project_id = p.id
+    WHERE a.client_confirmed = 1 AND a.client_confirm_date IS NOT NULL
+          AND a.delivery_date IS NOT NULL AND a.client_confirm_date >= a.delivery_date
+    '''
+    params = []
+
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    if start_date:
+        query += ' AND a.delivery_date >= ?'
+        params.append(start_date)
+    if end_date:
+        query += ' AND a.delivery_date <= ?'
+        params.append(end_date)
+
+    query += ' GROUP BY p.client_name ORDER BY avg_confirm_days DESC'
+
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+def get_revision_round_distribution(client_filter=None, actor_filter=None,
+                                    start_date=None, end_date=None):
+    conn = create_connection()
+
+    query = '''
+    SELECT 
+        COALESCE((SELECT MAX(r2.round) FROM revisions r2 WHERE r2.project_id = p.id), 0) as round_num,
+        COUNT(*) as count
+    FROM archives a
+    INNER JOIN projects p ON a.project_id = p.id
+    WHERE 1=1
+    '''
+    params = []
+
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    if start_date:
+        query += ' AND a.delivery_date >= ?'
+        params.append(start_date)
+    if end_date:
+        query += ' AND a.delivery_date <= ?'
+        params.append(end_date)
+
+    query += ' GROUP BY round_num ORDER BY round_num'
+
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+def get_archive_review_summary(client_filter=None, actor_filter=None,
+                               start_date=None, end_date=None):
+    conn = create_connection()
+
+    query = '''
+    SELECT a.review_conclusion, COUNT(*) as count
+    FROM archives a
+    INNER JOIN projects p ON a.project_id = p.id
+    WHERE a.review_conclusion IS NOT NULL AND a.review_conclusion != ''
+    '''
+    params = []
+
+    if client_filter and client_filter != '全部':
+        query += ' AND p.client_name = ?'
+        params.append(client_filter)
+    if actor_filter and actor_filter != '全部':
+        query += ' AND p.voice_actor = ?'
+        params.append(actor_filter)
+    if start_date:
+        query += ' AND a.delivery_date >= ?'
+        params.append(start_date)
+    if end_date:
+        query += ' AND a.delivery_date <= ?'
+        params.append(end_date)
+
+    query += ' GROUP BY a.review_conclusion ORDER BY count DESC'
+
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df

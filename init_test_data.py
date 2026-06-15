@@ -69,9 +69,51 @@ def init_test_data():
                 database.add_revision(
                     project_id, rev_date, reason, round_num, is_urgent, description
                 )
-    
+
+    review_conclusions = [
+        '项目顺利交付，客户满意度高',
+        '返稿主要因发音问题，需加强审听',
+        '客户要求频繁变更导致返稿',
+        '配音员表现优异，一次通过',
+        '音质问题导致多次返稿',
+        '沟通不畅导致返稿增加',
+        '加急项目处理得当，按时交付',
+        '客户内部流程变化导致延期确认',
+    ]
+
+    archive_count = 0
+    for project_id in projects:
+        project = database.get_project_by_id(project_id)
+        if project and project['revision_status'] in ('已完成', '已验收'):
+            draft_dt = datetime.strptime(project['draft_date'], "%Y-%m-%d")
+            delivery_date = (draft_dt + timedelta(days=random.randint(5, 20))).strftime("%Y-%m-%d")
+            client_confirmed = 1 if random.random() > 0.3 else 0
+            if client_confirmed:
+                confirm_offset = random.randint(1, 7)
+                client_confirm_date = (datetime.strptime(delivery_date, "%Y-%m-%d") + timedelta(days=confirm_offset)).strftime("%Y-%m-%d")
+            else:
+                client_confirm_date = ''
+            version = f"v{random.randint(1, 3)}.{random.randint(0, 5)}"
+            delivery_files = random.choice([
+                'final_mix.wav', 'final_v2.mp3', 'delivery_master.wav',
+                'final_stereo.wav', 'complete_pack.zip', 'final_delivery.wav'
+            ])
+            review_conclusion = random.choice(review_conclusions)
+
+            database.add_archive(
+                project_id=project_id,
+                delivery_file=delivery_files,
+                delivery_version=version,
+                delivery_date=delivery_date,
+                client_confirmed=client_confirmed,
+                client_confirm_date=client_confirm_date,
+                review_conclusion=review_conclusion
+            )
+            archive_count += 1
+
     print("测试数据初始化完成！")
     print(f"已创建 {len(projects)} 个项目，包含若干返稿记录。")
+    print(f"已归档 {archive_count} 个已完成/已验收项目。")
 
 if __name__ == "__main__":
     init_test_data()
